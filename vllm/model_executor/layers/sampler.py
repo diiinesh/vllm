@@ -121,6 +121,9 @@ class SamplerOutput(
     # block/sync across workers, cpu-gpu sync time and sampling time.
     model_execute_time: Optional[float] = None
 
+    # probabilities of tokens for next token prediction
+    probabilities: Optional[torch.Tensor] = None
+
     def __getitem__(self, idx: int):
         return self.outputs[idx]
 
@@ -145,7 +148,8 @@ class SamplerOutput(
             f"SamplerOutput(outputs={self.outputs}, "
             f"sampled_token_probs={sampled_token_probs_repr}, "
             f"sampled_token_ids={sampled_token_ids_repr}, "
-            f"spec_decode_worker_metrics={self.spec_decode_worker_metrics})")
+            f"spec_decode_worker_metrics={self.spec_decode_worker_metrics}), "
+            f"Probabilities={self.probabilities}")
 
 
 class Sampler(nn.Module):
@@ -311,7 +315,8 @@ class Sampler(nn.Module):
             prompt_logprobs,
             sample_logprobs,
             on_device_tensors=on_device_tensors,
-            skip_sampler_cpu_output=sampling_metadata.skip_sampler_cpu_output)
+            skip_sampler_cpu_output=sampling_metadata.skip_sampler_cpu_output,
+            probabilities=probs)
 
     @property
     def _should_modify_greedy_probs_inplace(self) -> bool:
@@ -1330,6 +1335,7 @@ def _build_sampler_output(
     on_device_tensors: Optional[Tuple[torch.Tensor, torch.Tensor,
                                       torch.Tensor]],
     skip_sampler_cpu_output: bool = False,
+    probabilities: Optional[torch.Tensor] = None
 ) -> SamplerOutput:
     """Construct Python objects with the output of sampling.
 
@@ -1358,11 +1364,12 @@ def _build_sampler_output(
             seq_ids = seq_group.seq_ids
             next_token_ids, parent_ids = sample_result
             seq_outputs: List[SequenceOutput] = []
-            for parent_id, next_token_id, logprobs in zip(
-                    parent_ids, next_token_ids, group_sample_logprobs):
+            for idx, (parent_id, next_token_id, logprobs) in enumerate(zip(
+                    parent_ids, next_token_ids, group_sample_logprobs)):
+                token_probabilities = probabilities[idx] if probabilities is not None else None
                 seq_outputs.append(
                     SequenceOutput(seq_ids[parent_id], next_token_id,
-                                   logprobs))
+                                   logprobs, probabilities=token_probabilities))
             sampler_output.append(
                 CompletionSequenceGroupOutput(seq_outputs,
                                               group_prompt_logprobs))
@@ -1380,7 +1387,8 @@ def _build_sampler_output(
         sampled_token_probs=sampled_token_probs,
         sampled_token_ids=sampled_token_ids,
         logprobs=logprobs_tensor,
-        deferred_sample_results_args=deferred_sample_results_args)
+        deferred_sample_results_args=deferred_sample_results_args,
+        probabilities=probabilities)
 
 
 def _get_next_prompt_tokens(seq_group: SequenceGroupToSample) -> List[int]:

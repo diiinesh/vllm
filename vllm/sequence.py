@@ -403,6 +403,7 @@ class Sequence:
         self.data = SequenceData(
             array(VLLM_TOKEN_ID_ARRAY_TYPE, self.prompt_token_ids))
         self.output_logprobs: SampleLogprobs = []
+        self.output_full_probs: List[torch.Tensor] = []
         self.output_text = ""
 
         self.status = SequenceStatus.WAITING
@@ -519,6 +520,15 @@ class Sequence:
         assert token_id in logprobs
         self.output_logprobs.append(logprobs)
         self.data.append_token_id(token_id, logprobs[token_id].logprob)
+
+    def get_full_probs_to_return(self) -> Optional[List[torch.Tensor]]:
+        """
+        Retrieves all the full probability distributions.
+
+        Returns:
+            Optional[List[torch.Tensor]]: The full_probs list.
+        """
+        return self.output_full_probs if self.output_full_probs else None
 
     def get_len(self) -> int:
         return self.data.get_len()
@@ -1003,11 +1013,13 @@ class SequenceOutput(
     parent_seq_id: int
     output_token: int
     logprobs: Dict[int, Logprob]
+    probabilities: Optional[torch.Tensor]
 
     def __repr__(self) -> str:
         return (f"SequenceOutput(parent_seq_id={self.parent_seq_id}, "
                 f"output_token={self.output_token}, "
-                f"logprobs={self.logprobs})")
+                f"logprobs={self.logprobs}), "
+                f"probabilities={self.probabilities}")
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, SequenceOutput):

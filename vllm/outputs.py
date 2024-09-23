@@ -27,6 +27,7 @@ class CompletionOutput:
             to stop, None if the completion finished for some other reason
             including encountering the EOS token.
         lora_request: The LoRA request that was used to generate the output.
+        full_probs: The full probability of the generated output text.
     """
 
     index: int
@@ -37,6 +38,7 @@ class CompletionOutput:
     finish_reason: Optional[str] = None
     stop_reason: Union[int, str, None] = None
     lora_request: Optional[LoRARequest] = None
+    full_probs: Optional[List[torch.Tensor]] = None
 
     def finished(self) -> bool:
         return self.finish_reason is not None
@@ -48,7 +50,8 @@ class CompletionOutput:
                 f"cumulative_logprob={self.cumulative_logprob}, "
                 f"logprobs={self.logprobs}, "
                 f"finish_reason={self.finish_reason}, "
-                f"stop_reason={self.stop_reason})")
+                f"stop_reason={self.stop_reason}), "
+                f"full_probs={self.full_probs})")
 
 
 @dataclass
@@ -144,6 +147,7 @@ class RequestOutput:
         # always has the logprobs of the sampled tokens even if the
         # logprobs are not requested.
         include_logprobs = sampling_params.logprobs is not None
+        return_probs = sampling_params.return_probs
         text_buffer_length = sampling_params.output_text_buffer_length
         delta = sampling_params.output_kind == RequestOutputKind.DELTA
 
@@ -154,6 +158,7 @@ class RequestOutput:
                 text_buffer_length, delta)
             output_token_ids = seq.get_output_token_ids_to_return(delta)
             output_logprobs = seq.output_logprobs if include_logprobs else None
+            output_full_probs = seq.get_full_probs_to_return() if return_probs else None
 
             if delta:
                 # Slice logprobs delta if applicable
@@ -171,7 +176,8 @@ class RequestOutput:
                     seq.get_cumulative_logprob() if include_logprobs else None,
                     output_logprobs,
                     SequenceStatus.get_finished_reason(seq.status),
-                    seq.stop_reason))
+                    seq.stop_reason,
+                    full_probs=output_full_probs))
 
         # Every sequence in the sequence group should have the same prompt.
         if include_prompt:

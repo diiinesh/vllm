@@ -193,3 +193,33 @@ def test_chat_multi_image(image_urls: List[str]):
     }]
     outputs = llm.chat(messages)
     assert len(outputs) >= 0
+
+@pytest.mark.skip_global_cleanup
+def test_generate_with_full_probs(llm: LLM):
+    """
+    Test the generate function with SamplingParams set to return full_probs.
+    Verifies that the full_probs list is included in the output.
+    """
+    prompt = "Hello, my name is"
+
+    # Configure SamplingParams with return_probs=True
+    sampling_params = SamplingParams(max_tokens=1, top_p=1, top_k=-1, min_p=0, return_probs=True)
+
+    # Call the generate function with the specified SamplingParams
+    outputs = llm.generate(prompt, sampling_params=sampling_params)
+    print(outputs)
+    # with open("Generate_output.json", "w") as f:
+    #     for out in outputs:
+    #         output = out.outputs
+    #         json.dump(output.__str__(), f)
+
+    # Assert that one output is returned for a single prompt
+    assert len(outputs) == 1, "Expected one output for a single prompt"
+
+    # Retrieve the first (and only) output
+    for req_output in outputs:
+        completion_output = req_output.outputs
+        for output in completion_output:
+            probs = output.full_probs
+            print(f"Full probabilities: {probs}")
+            print(f"Probs shape: {probs[0].shape}")
